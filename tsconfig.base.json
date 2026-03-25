@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@taps/contracts": ["packages/contracts/src/index.ts"],
+      "@taps/contracts/*": ["packages/contracts/src/*"],
+      "@taps/domain": ["packages/domain/src/index.ts"],
+      "@taps/domain/*": ["packages/domain/src/*"],
+      "@taps/mcp": ["packages/mcp/src/index.ts"],
+      "@taps/mcp/*": ["packages/mcp/src/*"],
+      "@taps/db": ["packages/db/src/index.ts"],
+      "@taps/db/*": ["packages/db/src/*"],
+      "@taps/config": ["packages/config/src/index.ts"],
+      "@taps/config/*": ["packages/config/src/*"],
+      "@taps/observability": ["packages/observability/src/index.ts"],
+      "@taps/observability/*": ["packages/observability/src/*"],
+      "@taps/testing": ["packages/testing/src/index.ts"],
+      "@taps/testing/*": ["packages/testing/src/*"]
+    }
+  }
+}

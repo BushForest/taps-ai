@@ -1,0 +1,771 @@
+{
+  "project": "TAPs Eats",
+  "branchName": "ralph/taps-eats-full",
+  "description": "NFC tableside commerce platform — customer PWA (menu, live bill, pay, auth) + admin PWA (floor view, sessions, feature flags) with multi-vendor payment adapter (Stripe Connect + Square) and modular subroutine architecture",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Shared contracts package — core TypeScript types",
+      "description": "As a developer, I need shared TypeScript types for sessions, checks, payers, and menu items so that customer-web and admin-web stay in sync.",
+      "acceptanceCriteria": [
+        "packages/contracts/src/index.ts exports: Session, SessionPayer, CheckSnapshot, CheckLine, MenuItem, MenuCategory, MenuSnapshot, PaymentRecord, ServerRequest, FeatureFlags, RestaurantSettings",
+        "CheckSnapshot includes: lines, totalCents, subtotalCents, taxCents, feeCents, amountPaidCents, remainingBalanceCents, version, assignmentSummary",
+        "CheckLine includes: id, name, grossCents, assignedCents, assignmentStatus, isTinyCharge, parentId",
+        "FeatureFlags is a Record<string, boolean> with known keys typed as optional booleans",
+        "packages/contracts/package.json exports main and types fields",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Database schema migrations — sessions and payers",
+      "description": "As a developer, I need database tables for sessions and payers so the platform can track table sessions and who is paying.",
+      "acceptanceCriteria": [
+        "sessions table: id (uuid), public_token (text unique), table_id (text), restaurant_id (text), status (text default 'active'), created_at (timestamptz)",
+        "session_payers table: id (uuid), session_id (uuid FK sessions), display_name (text), contact_info (text), contact_type (text), status (text default 'ordering'), created_at (timestamptz)",
+        "Migration file in infra/migrations/ or packages/db/migrations/",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Database schema migrations — payments and requests",
+      "description": "As a developer, I need database tables for payment records and server requests so we can track payments and assistance.",
+      "acceptanceCriteria": [
+        "payment_records table: id (uuid), session_id (uuid FK), payer_id (uuid FK session_payers), amount_cents (int), tip_cents (int), provider (text), provider_payment_id (text), status (text), created_at (timestamptz)",
+        "server_requests table: id (uuid), session_id (uuid FK), request_type (text), notes (text), status (text default 'pending'), created_at (timestamptz)",
+        "restaurant_settings table: restaurant_id (text PK), feature_flags (jsonb default '{}'), payment_provider (text default 'stripe'), stripe_connect_account_id (text), square_merchant_id (text), updated_at (timestamptz)",
+        "Migration file created",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Payment adapter interface + Stripe Connect implementation",
+      "description": "As a developer, I need a PaymentAdapter interface with a Stripe Connect implementation so payments can be processed through a vendor-agnostic layer.",
+      "acceptanceCriteria": [
+        "packages/payment-adapters/src/interface.ts exports PaymentAdapter interface with: createPaymentIntent, confirmPayment, refund, getStatus",
+        "packages/payment-adapters/src/stripe-adapter.ts implements PaymentAdapter using stripe SDK",
+        "createPaymentIntent accepts: amountCents, tipCents, restaurantStripeAccountId, idempotencyKey, metadata",
+        "transfer_data.destination set to restaurantStripeAccountId on payment intent",
+        "application_fee_amount calculated from platform fee percentage (env: PLATFORM_FEE_PERCENT, default 2)",
+        "packages/payment-adapters/package.json exports correctly",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Square payment adapter implementation",
+      "description": "As a developer, I need a Square adapter implementing PaymentAdapter so restaurants using Square can process payments without code changes.",
+      "acceptanceCriteria": [
+        "packages/payment-adapters/src/square-adapter.ts implements PaymentAdapter using squareup SDK",
+        "createPaymentIntent maps to Square CreatePayment API",
+        "Active adapter selected by PAYMENT_PROVIDER env var: 'stripe' uses StripeAdapter, 'square' uses SquareAdapter",
+        "packages/payment-adapters/src/index.ts exports getPaymentAdapter(provider) factory function",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Feature flags API route + useFeatureFlags hook",
+      "description": "As a developer, I need a feature flags API and React hook so each feature module can conditionally render based on restaurant settings.",
+      "acceptanceCriteria": [
+        "GET /api/restaurant/[restaurantId]/flags returns FeatureFlags JSON from restaurant_settings",
+        "apps/customer-web/src/lib/feature-flags.ts exports getFeatureFlags(restaurantId) server function",
+        "apps/customer-web/src/hooks/useFeatureFlags.ts exports useFeatureFlags() client hook (fetches on mount, 30s refresh)",
+        "Known flag keys: menu_ordering, kitchen_submit, live_bill, pay_tab, request_server, loyalty, phone_otp, email_auth, social_auth, guest_checkout, apple_pay, google_pay, samsung_pay",
+        "Default: all flags true if no restaurant_settings row exists",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "JWT auth utility + middleware",
+      "description": "As a developer, I need JWT signing/verification utilities and a Next.js middleware so authenticated routes are protected.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/lib/auth.ts exports: signJWT(payload), verifyJWT(token), getSessionUser(request)",
+        "JWT payload: { payerId, sessionId, contactType, contact }",
+        "JWT stored in httpOnly cookie named 'taps_session', 24hr expiry",
+        "apps/customer-web/src/middleware.ts protects /api/pay/* routes — returns 401 if no valid JWT",
+        "JWT_SECRET read from env",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Phone OTP auth API routes (send + verify)",
+      "description": "As a diner, I want to receive an OTP on my phone and verify it to authenticate before paying.",
+      "acceptanceCriteria": [
+        "POST /api/auth/send-otp accepts { phone: string, sessionId: string } — sends OTP via Twilio Verify",
+        "POST /api/auth/verify-otp accepts { phone: string, code: string, sessionId: string } — verifies OTP",
+        "On success: upserts session_payers row with contact_info=phone, contact_type='phone', sets JWT cookie, returns { payerId, displayName }",
+        "On failure: returns 400 with { error: 'Invalid code' }",
+        "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID read from env",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Email auth API route",
+      "description": "As a diner, I want to sign in with email and password so I can pay and receive a receipt by email.",
+      "acceptanceCriteria": [
+        "POST /api/auth/email accepts { email: string, password: string, sessionId: string }",
+        "Looks up user by email in a users table (email, password_hash, display_name)",
+        "On success: upserts session_payers row with contact_type='email', sets JWT cookie, returns { payerId, displayName }",
+        "POST /api/auth/register accepts { email, password, displayName, sessionId } — creates user + payer",
+        "Passwords hashed with bcrypt (10 rounds)",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Session summary API route",
+      "description": "As the customer PWA, I need to resolve a publicToken to session context so the app knows which table and restaurant it is serving.",
+      "acceptanceCriteria": [
+        "GET /api/session/[token]/summary returns: { session: { id, tableId, restaurantId, status }, access: { publicAccessAllowed }, payers: SessionPayer[], settlement: { tableComplete, payerCompletionCount, totalPayerCount } }",
+        "publicAccessAllowed is true if session status is 'active'",
+        "404 if token not found",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Menu API route",
+      "description": "As the customer PWA, I need to fetch the restaurant menu so diners can browse items.",
+      "acceptanceCriteria": [
+        "GET /api/menu/[restaurantId] returns MenuSnapshot: { categories: MenuCategory[], items: MenuItem[] }",
+        "MenuItem includes: id, name, description, basePriceCents, categoryId, availability ('available'|'sold_out'|'hidden'), modifiers",
+        "Seed data included for Black+Blue Toronto: Steaks & Mains, Starters, Cocktails, Desserts categories with 4-6 items each",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Check/bill API route",
+      "description": "As the customer PWA, I need to fetch the live check snapshot so diners can see the current bill.",
+      "acceptanceCriteria": [
+        "GET /api/session/[token]/check returns CheckSnapshot with lines, subtotalCents, taxCents, feeCents, totalCents, amountPaidCents, remainingBalanceCents, version, assignmentSummary",
+        "assignmentSummary includes: unassignedLineItemIds[], unassignedTinyItemIds[]",
+        "Lines include parentId for modifier hierarchy",
+        "Seed check data for demo tokens (pub_demo_table_10, pub_demo_table_12)",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Order submission API route",
+      "description": "As a diner, I need to submit my cart to the kitchen via the API.",
+      "acceptanceCriteria": [
+        "POST /api/session/[token]/order accepts { lines: { menuItemId, quantity, modifiers, notes }[] }",
+        "Creates order_lines records in DB linked to session",
+        "Returns { orderId, status: 'submitted', lines: [...] }",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Payment intent creation API route",
+      "description": "As the customer PWA, I need to create a payment intent server-side before charging the diner.",
+      "acceptanceCriteria": [
+        "POST /api/pay/[token]/intent accepts { amountCents, tipCents, splitMethod: 'evenly'|'items'|'custom', splitN?: number } — requires valid JWT",
+        "Looks up restaurant payment_provider and credentials from restaurant_settings",
+        "Calls getPaymentAdapter(provider).createPaymentIntent(...) with idempotency key = sessionId+payerId+amountCents",
+        "Returns { clientSecret, provider, intentId }",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Payment webhook handler + payer status update",
+      "description": "As the system, I need to handle Stripe/Square webhooks so payer status updates when payment succeeds.",
+      "acceptanceCriteria": [
+        "POST /api/webhooks/stripe validates Stripe-Signature header against STRIPE_WEBHOOK_SECRET",
+        "On payment_intent.succeeded: updates payment_records status to 'completed', updates session_payers status to 'completed'",
+        "Recalculates remainingBalanceCents on check snapshot",
+        "Triggers receipt delivery (calls sendReceipt service)",
+        "Returns 200 immediately, processing async",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Receipt delivery service (SMS + email)",
+      "description": "As a diner, I want to receive an itemized receipt after paying via SMS or email.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/lib/receipt.ts exports sendReceipt({ payerId, paymentRecordId })",
+        "Loads payer contact_type and contact_info from DB",
+        "If contact_type='phone': sends SMS via Twilio with itemized receipt text (restaurant name, table, items, subtotal, tip, total)",
+        "If contact_type='email': sends HTML email via Resend with same data",
+        "RESEND_API_KEY and RECEIPT_FROM_EMAIL read from env",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Server request API route",
+      "description": "As a diner, I need to submit a server assistance request via the API.",
+      "acceptanceCriteria": [
+        "POST /api/session/[token]/request accepts { requestType: 'water'|'utensils'|'ice'|'refill'|'other', notes?: string }",
+        "Creates server_requests record with status='pending'",
+        "Returns { requestId, status: 'pending' }",
+        "GET /api/session/[token]/request returns current server availability and pending request count",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Admin API — table states + floor view data",
+      "description": "As the admin PWA, I need an API that returns all active table states for the floor view.",
+      "acceptanceCriteria": [
+        "GET /api/admin/floor returns: { tables: TableState[], stats: { activeTables, totalOutstandingCents, alertCount } }",
+        "TableState includes: tableId, sessionId, status ('available'|'just_seated'|'eating'|'about_to_pay'|'assistance_requested'), guestCount, timeActiveMs, remainingBalanceCents",
+        "Status derived from session + check + server_requests state",
+        "assistance_requested if any pending server_request exists for session",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Admin API — sessions list + exceptions",
+      "description": "As the admin PWA, I need APIs for the sessions list and exceptions.",
+      "acceptanceCriteria": [
+        "GET /api/admin/sessions returns paginated list of sessions with: tableId, sessionId, checkVersion, status, remainingBalanceCents, payersDone, payersTotal, publicAccessAllowed, exceptionCount",
+        "GET /api/admin/exceptions returns sessions with unassigned lines or close-validation failures",
+        "POST /api/admin/exceptions/[id]/resolve marks exception resolved",
+        "POST /api/admin/sessions/[id]/mark-served updates session status",
+        "POST /api/admin/sessions/[id]/clear sets session status to 'closed'",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Admin API — feature flags CRUD",
+      "description": "As a restaurant manager, I need to update feature flags via the API so the admin dashboard can toggle features.",
+      "acceptanceCriteria": [
+        "GET /api/admin/settings/[restaurantId]/flags returns current FeatureFlags",
+        "PATCH /api/admin/settings/[restaurantId]/flags accepts partial FeatureFlags, merges into restaurant_settings.feature_flags, updates updated_at",
+        "Response includes updated flags + last_changed_at",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Customer PWA — design tokens + global CSS",
+      "description": "As a developer, I need global CSS variables and base styles matching the dark steakhouse design so all components use consistent tokens.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/globals.css defines CSS variables: --color-bg:#0e0e0e, --color-card:#1a1a1a, --color-header:#111111, --color-gold:#c9a96e, --color-gold-deep:#a07840, --color-muted:#888888, --color-text:#ffffff",
+        "Body background is var(--color-bg), font-family Inter",
+        "Base button, input, and card styles defined",
+        "Existing globals.css replaced/updated",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Customer PWA — SessionShell + 3-tab bottom nav",
+      "description": "As a diner, I want a consistent app shell with a 3-tab bottom navigation (Menu | Live Bill | Pay) so I can navigate between sections.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/components/session-shell.tsx renders: dark header (BLACK+BLUE TORONTO, Sign In button, Server pill), page content, 3-tab pill bottom nav",
+        "Bottom nav tabs: Menu | Live Bill | Pay — active tab highlighted gold",
+        "Header height 48px, bottom nav 87px (padding-bottom safe area aware)",
+        "activeNav prop controls which tab is highlighted",
+        "Existing session-shell.tsx replaced with this implementation",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Customer PWA — NFC entry page + session routing",
+      "description": "As a diner, I want tapping the NFC tag to land me on the correct table session page.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/session/[sessionId]/page.tsx redirects to /session/[sessionId]/menu",
+        "apps/customer-web/src/app/session/[sessionId]/layout.tsx fetches summary and passes restaurantId + tableLabel as context",
+        "Invalid/expired token shows error page with restaurant name and contact",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Customer PWA — Menu page with category pills + item grid",
+      "description": "As a diner, I want to browse the menu by category with item photos and prices.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/session/[sessionId]/menu/page.tsx renders MenuPreview component",
+        "Category pills: Full Menu + all categories from API — active pill gold background",
+        "2-column grid of item cards: photo (Unsplash by keyword), name, price",
+        "Sold-out items show 'Sold out' badge, reduced opacity, non-clickable",
+        "Hidden items (availability='hidden') not rendered",
+        "Cart badge in header shows count when cart > 0",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Customer PWA — Item detail modal with options + allergens",
+      "description": "As a diner, I want to expand a menu item to choose doneness, sauce, and see allergen info before adding to cart.",
+      "acceptanceCriteria": [
+        "Clicking menu card opens ItemDetailModal full-screen overlay",
+        "Full-bleed hero image at top",
+        "Doneness pills (Rare/Med-Rare/Medium/Well) shown for steak items (name contains: steak, ribeye, filet, strip, sirloin, bone-in, tenderloin)",
+        "Allergen chips: Gluten, Dairy, Shellfish, Nuts, Eggs — filled gold if item contains",
+        "Notes textarea field",
+        "Quantity +/- selector, min 1",
+        "'Add to Order' gold CTA",
+        "Close button top-right",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Customer PWA — Cart state + Send to Kitchen bottom bar",
+      "description": "As a diner, I want my cart persisted locally and a Send to Kitchen CTA at the bottom when I have items.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/hooks/useCart.ts manages cart in localStorage: addItem, removeItem, clearCart, cartItems, cartCount",
+        "CartItem: { menuItemId, name, quantity, basePriceCents, options: { doneness?, sauce?, notes? } }",
+        "When cartCount > 0: gold 'Send to Kitchen' pill replaces bottom nav (or overlays it)",
+        "Header cart badge shows cartCount",
+        "Cart persists on page refresh",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Customer PWA — Kitchen confirm bottom sheet",
+      "description": "As a diner, I want to review my cart in a bottom sheet before sending to the kitchen.",
+      "acceptanceCriteria": [
+        "Tapping 'Send to Kitchen' pill opens KitchenConfirmSheet bottom sheet",
+        "Sheet shows: PENDING ORDER heading, list of items (name, quantity, price, options), total",
+        "'Send to Kitchen' gold CTA submits POST /api/session/[token]/order, clears cart, closes sheet",
+        "'Keep Browsing' link dismisses sheet",
+        "Loading state on submit button",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Customer PWA — Live Bill page (IN KITCHEN / ON TABLE)",
+      "description": "As a diner, I want to see the live table tab grouped by kitchen status so I know what's coming and what's been served.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/session/[sessionId]/bill/page.tsx renders live bill",
+        "Summary bar: remaining balance, already paid",
+        "IN KITCHEN section: lines with status not 'delivered'",
+        "ON TABLE section: lines with status 'delivered', unpaid",
+        "Each line: item name, price, payer avatar (first initial)",
+        "'Pay Your Share' gold CTA links to /session/[token]/pay",
+        "Help FAB (question mark) in bottom-right opens Request Server sheet",
+        "Polling every 30s via useInterval",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Customer PWA — Pay tab shell + MY TAB balance card",
+      "description": "As a diner, I want to see my current balance on the Pay tab before choosing how to pay.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/session/[sessionId]/pay/page.tsx renders PayTab",
+        "MY TAB card: gold border, shows remaining balance in large text",
+        "Three expandable sections below: Split Evenly, Pay for My Items, Custom Amount",
+        "Only one section expanded at a time — clicking header toggles, others collapse",
+        "Active section has gold border + 'SELECTED' pill in header",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Customer PWA — Pay tab Split Evenly section",
+      "description": "As a diner, I want to split the bill evenly by choosing the number of people.",
+      "acceptanceCriteria": [
+        "Split Evenly expanded section shows people picker: - and + buttons, count 2-10",
+        "'Each person pays $XX.XX' shown in gold text below picker",
+        "Amount = ceil(remainingBalanceCents / n) in cents",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Customer PWA — Pay tab: Pay My Items + Custom Amount sections",
+      "description": "As a diner, I want to pay for just my assigned items or enter a custom amount.",
+      "acceptanceCriteria": [
+        "Pay for My Items section: lists assigned line items from check snapshot, shows my subtotal",
+        "Custom Amount section: numeric input, capped at remainingBalanceCents, shows entered amount",
+        "Both sections collapse/expand like Split Evenly",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 31,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "Customer PWA — Tip selector + wallet buttons + Pay CTA",
+      "description": "As a diner, I want to choose a tip percentage and pay with Apple Pay, Google Pay, or card.",
+      "acceptanceCriteria": [
+        "Tip row below active split section: 15% / 18% / 20% / Custom buttons — active highlighted gold",
+        "Custom tip: numeric dollar input field appears when Custom selected",
+        "Wallet buttons: Apple Pay shown on iOS Safari, Google Pay on Android Chrome, Samsung Pay on Samsung browser — all others hidden",
+        "Pay CTA at bottom: 'Pay $XX.XX · [Split Method]' — amount = selected split + tip",
+        "Tapping Pay CTA triggers auth gate if not authenticated",
+        "After auth: calls POST /api/pay/[token]/intent, then confirms with Stripe.js or Square SDK",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 32,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Customer PWA — Pay Whole Tab page",
+      "description": "As a diner (the host), I want to pay the entire remaining table balance at once.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/session/[sessionId]/pay-whole/page.tsx renders PayWholeTab",
+        "Shows full remainingBalanceCents as the amount",
+        "Same tip selector + wallet buttons + Pay CTA as split flow",
+        "Pay CTA label: 'Pay $XX.XX · Full Tab'",
+        "Link from Pay tab ('Pay Whole Tab' secondary button below MY TAB card)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 33,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Customer PWA — Sign In modal (Phone OTP tab)",
+      "description": "As a diner, I want to authenticate with phone OTP before paying.",
+      "acceptanceCriteria": [
+        "SignInModal renders as bottom-sheet overlay with 3 tabs: Phone | Email | Social",
+        "Phone tab step 1: phone number input with +1 country code prefix, 'Send Code' gold CTA",
+        "Phone tab step 2: 6-digit OTP input, 'Verify' gold CTA, 'Back' button, resend countdown 60s",
+        "On verify success: closes modal, payment proceeds",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Customer PWA — Sign In modal (Email + Social + Guest tabs)",
+      "description": "As a diner, I want to sign in with email/password, Google, Apple, or continue as a guest.",
+      "acceptanceCriteria": [
+        "Email tab: email input + password input + 'Sign In' button + 'No account? Create one' link",
+        "Social tab: Google button (Google OAuth icon), Apple button (Apple icon), 'Continue as Guest' button",
+        "Guest: prompts for email for receipt, creates session_payer with contact_type='guest', no password",
+        "All methods call their respective auth API routes and set JWT on success",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 35,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-036",
+      "title": "Customer PWA — Auth gate hook",
+      "description": "As the customer PWA, I need an auth gate so the sign-in modal appears automatically before any payment action.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/hooks/useAuthGate.ts exports useAuthGate(): { isAuthenticated, requireAuth(onSuccess) }",
+        "requireAuth(onSuccess): if not authenticated, opens SignInModal — on success, calls onSuccess()",
+        "Checks JWT cookie presence via GET /api/auth/me (returns 200 with payer or 401)",
+        "Used in PayTab Pay CTA and Pay Whole Tab CTA",
+        "Typecheck passes"
+      ],
+      "priority": 36,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-037",
+      "title": "Customer PWA — Request Server sheet",
+      "description": "As a diner, I want to request server assistance from a quick-tile menu.",
+      "acceptanceCriteria": [
+        "RequestServerSheet bottom sheet: title 'Request Assistance', 6 tiles (Water, Utensils, Ice, Refill, Other, + icon)",
+        "Selecting 'Other' shows free-text notes input",
+        "Server availability indicator: green dot 'Available' or amber dot 'Busy'",
+        "'Send Request' gold CTA submits POST /api/session/[token]/request, shows success state",
+        "Sheet accessible from Help FAB on Live Bill page and from header Server button",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 37,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Customer PWA — Guest Profile page",
+      "description": "As a returning diner, I want a profile page to manage my settings and order history.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/app/profile/page.tsx renders Profile",
+        "Avatar with initials or photo, Gold Member badge if loyalty flag enabled",
+        "Menu items: Edit Profile, Payment Methods, Order History, Preferences, Settings, Notifications, Sign Out",
+        "Order History: list of past payment_records with date, restaurant, total",
+        "Sign Out: clears JWT cookie, redirects to /",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 38,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "Customer PWA — Feature-gated module wrappers",
+      "description": "As a developer, I want each customer PWA feature wrapped in a feature flag check so the restaurant can disable it from the admin.",
+      "acceptanceCriteria": [
+        "Each major page/component checks its feature flag: menu_ordering gates Menu, live_bill gates Live Bill, pay_tab gates Pay tab, request_server gates Request Server",
+        "When flag is off, page renders <FeatureDisabled name='...' /> with muted message",
+        "apps/customer-web/src/components/feature-disabled.tsx renders centered message: 'This feature is not currently available. Please ask your server.'",
+        "Typecheck passes"
+      ],
+      "priority": 39,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "Admin PWA — design tokens + global CSS",
+      "description": "As a developer, I need the admin PWA to use the same dark steakhouse design tokens as the customer PWA.",
+      "acceptanceCriteria": [
+        "apps/admin-web/src/app/globals.css uses same CSS variables as customer-web",
+        "Admin shell: dark sidebar or top nav with BLACK+BLUE TORONTO branding",
+        "Table state color classes defined: .state-available (grey), .state-just_seated (blue), .state-eating (green), .state-about_to_pay (amber), .state-assistance_requested (red with pulse animation)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 40,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "Admin PWA — Floor View stat bar + table grid",
+      "description": "As a restaurant worker, I want a live floor view showing all table states at a glance.",
+      "acceptanceCriteria": [
+        "apps/admin-web/src/app/floor/page.tsx renders FloorView",
+        "Stat bar at top: active tables count, total outstanding ($), alert count (assistance requested)",
+        "Table grid: each card shows tableId, state color dot + label, guest count, time active (MM:SS), remaining balance",
+        "Assistance Requested cards have red background + pulsing alarm indicator",
+        "Auto-refresh every 30s via polling GET /api/admin/floor",
+        "FLOOR / SESSIONS / EXCEPTIONS pill nav at bottom",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 41,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "Admin PWA — Table card actions (Mark Served + Clear Table)",
+      "description": "As a restaurant worker, I want to mark tables as served and clear them when done.",
+      "acceptanceCriteria": [
+        "Each table card has 'Mark Served' button — calls POST /api/admin/sessions/[id]/mark-served",
+        "Completed/settled tables show 'Clear Table' button — calls POST /api/admin/sessions/[id]/clear",
+        "Clicking 'Clear Table' shows confirmation dialog before proceeding",
+        "After action: table grid refreshes",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 42,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "Admin PWA — Sessions list with filter",
+      "description": "As a restaurant worker, I want to see all sessions in a filterable list.",
+      "acceptanceCriteria": [
+        "apps/admin-web/src/app/sessions/page.tsx renders SessionsList",
+        "Filter pills: All | Active | Completed | Exception",
+        "Each row: table ID, session ID, check version, status pill, remaining balance, payers done/total",
+        "Clicking row expands inline to show line items and payer breakdown",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 43,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-044",
+      "title": "Admin PWA — Exceptions list",
+      "description": "As a restaurant worker, I want to see sessions with unresolved issues so I can intervene.",
+      "acceptanceCriteria": [
+        "apps/admin-web/src/app/exceptions/page.tsx renders ExceptionsList",
+        "Each exception: severity (warn/error), description, session link, 'Resolve' button",
+        "Resolve calls POST /api/admin/exceptions/[id]/resolve, removes from list",
+        "Empty state: '✓ No exceptions right now' in muted text",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 44,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-045",
+      "title": "Admin PWA — Feature Flag dashboard",
+      "description": "As a restaurant manager, I want to toggle feature modules on/off from the admin UI.",
+      "acceptanceCriteria": [
+        "apps/admin-web/src/app/settings/flags/page.tsx renders FeatureFlagDashboard",
+        "Toggle list with labels and descriptions for each flag: Menu Ordering, Live Bill, Pay Tab, Request Server, Loyalty, Kitchen Confirm, Phone OTP, Email Auth, Social Auth, Guest Checkout, Apple Pay, Google Pay, Samsung Pay",
+        "Each toggle shows ON/OFF state, last changed timestamp",
+        "Toggle saves immediately via PATCH /api/admin/settings/[restaurantId]/flags",
+        "Optimistic UI update — reverts on error",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 45,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-046",
+      "title": "Loyalty badge — Gold Member display",
+      "description": "As a returning diner, I want to see my Gold Member status displayed on my profile.",
+      "acceptanceCriteria": [
+        "If loyalty flag is enabled AND session_payers has more than 5 past payment_records: show Gold Member badge on profile avatar",
+        "Badge: gold star icon + 'Gold Member' text in gold color",
+        "No loyalty points calculation — badge display only for v1",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 46,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-047",
+      "title": "End-to-end smoke test — NFC to payment flow",
+      "description": "As a developer, I want an automated test covering the critical path from session entry to payment so regressions are caught.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/tests/payment-flow.test.ts covers: session resolution, menu load, cart add, kitchen submit, bill load, pay intent creation",
+        "Uses msw to mock API routes",
+        "Test passes with 'npm test' or 'pnpm test'",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 47,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-048",
+      "title": "Environment variable validation + README",
+      "description": "As a developer, I want all required environment variables validated at startup and documented so the app fails fast with a clear error.",
+      "acceptanceCriteria": [
+        "apps/customer-web/src/lib/env.ts uses zod to validate all required env vars on startup",
+        "Missing vars throw with list of what's missing",
+        ".env.example file in repo root with all required vars (no real values)",
+        "README.md updated with setup instructions: clone, install, configure env, run dev",
+        "Typecheck passes"
+      ],
+      "priority": 48,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

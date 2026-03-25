@@ -1,0 +1,2 @@
+ ⚠ `experimental.typedRoutes` has been moved to `typedRoutes`. Please update your next.config.mjs file accordingly.
+^C
