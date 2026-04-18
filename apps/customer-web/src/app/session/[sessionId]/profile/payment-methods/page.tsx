@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import type { Route } from "next";
 
 const SAVED_CARDS = [
@@ -14,6 +16,23 @@ const DIGITAL_WALLETS = [
 
 export default function PaymentMethodsPage(props: { params: Promise<{ sessionId: string }> }) {
   const { sessionId: publicToken } = use(props.params);
+  const [cards, setCards] = useState(SAVED_CARDS);
+  const [showForm, setShowForm] = useState(false);
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvv, setCvv] = useState("");
+
+  function handleAddCard() {
+    if (cardNumber.length < 4) return;
+    setCards((prev) => [
+      ...prev,
+      { id: Date.now().toString(), brand: "Card", last4: cardNumber.slice(-4), expiry, isDefault: false },
+    ]);
+    setCardNumber("");
+    setExpiry("");
+    setCvv("");
+    setShowForm(false);
+  }
 
   return (
     <div className="subprofile-page">
@@ -26,7 +45,7 @@ export default function PaymentMethodsPage(props: { params: Promise<{ sessionId:
       <div className="subprofile-body">
         <p className="subprofile-section-label">Saved Cards</p>
         <div className="pm-list">
-          {SAVED_CARDS.map((card) => (
+          {cards.map((card) => (
             <div key={card.id} className="pm-card">
               <div className="pm-card__icon">▬</div>
               <div className="pm-card__info">
@@ -37,7 +56,34 @@ export default function PaymentMethodsPage(props: { params: Promise<{ sessionId:
               {!card.isDefault && <span className="pm-card__chevron">›</span>}
             </div>
           ))}
-          <button type="button" className="pm-add-btn">+ Add New Card</button>
+          <button type="button" className="pm-add-btn" onClick={() => setShowForm((v) => !v)}>+ Add New Card</button>
+          {showForm && (
+            <div className="pm-add-form">
+              <input
+                className="input"
+                placeholder="Card number"
+                value={cardNumber}
+                onChange={(e) => setCardNumber(e.target.value)}
+              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  className="input"
+                  placeholder="MM/YY"
+                  value={expiry}
+                  onChange={(e) => setExpiry(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <input
+                  className="input"
+                  placeholder="CVV"
+                  value={cvv}
+                  onChange={(e) => setCvv(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              <button type="button" className="pm-add-btn" onClick={handleAddCard}>Save Card</button>
+            </div>
+          )}
         </div>
 
         <p className="subprofile-section-label">Digital Wallets</p>

@@ -10,7 +10,7 @@ const MENU_ITEMS = [
   { icon: "📋", label: "Order History",     href: "order-history" },
   { icon: "🍽", label: "Preferences",       href: "preferences" },
   { icon: "⚙",  label: "Settings",          href: "settings" },
-  { icon: "🔔", label: "Notifications",     href: "preferences" },
+  { icon: "🔔", label: "Notifications",     href: "notifications" },
 ];
 
 function getCookie(name: string) {

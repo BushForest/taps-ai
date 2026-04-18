@@ -1,5 +1,7 @@
+"use client";
+
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import type { Route } from "next";
 
 const STATS = [
@@ -16,6 +18,9 @@ const ORDERS = [
 
 export default function OrderHistoryPage(props: { params: Promise<{ sessionId: string }> }) {
   const { sessionId: publicToken } = use(props.params);
+  const [showAll, setShowAll] = useState(false);
+
+  const visibleOrders = showAll ? ORDERS : ORDERS.slice(0, 3);
 
   return (
     <div className="subprofile-page">
@@ -37,7 +42,7 @@ export default function OrderHistoryPage(props: { params: Promise<{ sessionId: s
 
         <p className="subprofile-section-label">Recent Orders</p>
         <div className="oh-list">
-          {ORDERS.map((order) => (
+          {visibleOrders.map((order) => (
             <div key={order.id} className="oh-order">
               <div className="oh-order__left">
                 <span className="oh-order__date">{order.date}</span>
@@ -52,8 +57,13 @@ export default function OrderHistoryPage(props: { params: Promise<{ sessionId: s
           ))}
         </div>
 
-        <button type="button" className="btn-ghost" style={{ display: "block", width: "100%", textAlign: "center", color: "var(--gold)" }}>
-          View All Orders →
+        <button
+          type="button"
+          className="btn-ghost"
+          style={{ display: "block", width: "100%", textAlign: "center", color: "var(--gold)" }}
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? "Show Less ↑" : "View All Orders →"}
         </button>
       </div>
     </div>
