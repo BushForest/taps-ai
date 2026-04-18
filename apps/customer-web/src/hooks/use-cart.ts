@@ -10,6 +10,7 @@ export interface CartItem {
   options: {
     doneness?: string;
     sauce?: string;
+    side?: string;
     notes?: string;
   };
 }
@@ -47,7 +48,8 @@ export function useCart() {
         (i) =>
           i.id === item.id &&
           i.options.doneness === item.options.doneness &&
-          i.options.sauce === item.options.sauce
+          i.options.sauce === item.options.sauce &&
+          i.options.side === item.options.side
       );
       const next = existing
         ? prev.map((i) =>

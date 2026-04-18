@@ -15,13 +15,12 @@ const QUICK_REQUESTS_ROW2 = [
   { id: "refill", label: "Refill", icon: "🫗" },
   { id: "other", label: "Other", icon: "✨" },
 ];
-const ALL_QUICK_REQUESTS = [...QUICK_REQUESTS_ROW1, ...QUICK_REQUESTS_ROW2];
-
 const SERVER_NAME = "Marcus";
 
 export default function RequestServerPage(props: { params: Promise<{ sessionId: string }> }) {
   const { sessionId: publicToken } = use(props.params);
   const [selected, setSelected] = useState<string | null>(null);
+  const [customMessage, setCustomMessage] = useState("");
   const [sent, setSent] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -33,7 +32,11 @@ export default function RequestServerPage(props: { params: Promise<{ sessionId: 
     if (!selected) return;
     startTransition(async () => {
       try {
-        await apiPost(`/public/sessions/${publicToken}/assist`, { type: selected });
+        const msg = customMessage.trim();
+        await apiPost(`/public/sessions/${publicToken}/assist`, {
+          type: selected,
+          ...(selected === "other" && msg ? { message: msg } : {}),
+        });
       } catch {
         // best-effort — still show success to guest
       }
@@ -117,6 +120,17 @@ export default function RequestServerPage(props: { params: Promise<{ sessionId: 
                 </button>
               ))}
             </div>
+
+            {selected === "other" ? (
+              <textarea
+                className="notes-textarea"
+                placeholder="Describe your request…"
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                rows={3}
+                style={{ marginTop: 8 }}
+              />
+            ) : null}
 
             <button
               type="button"

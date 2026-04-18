@@ -282,7 +282,7 @@ export function PayTab(props: {
                   onClick={() => setPartySize(Math.max(1, partySize - 1))}
                   disabled={partySize <= 1}
                 >−</button>
-                <span className="people-picker__count">{partySize} people</span>
+                <span className="people-picker__count">{partySize === 1 ? "1 person" : `${partySize} people`}</span>
                 <button
                   type="button"
                   className="qty-btn"
@@ -531,7 +531,7 @@ export function PayTab(props: {
           ) : totalCents > 0 ? (
             <>Select a payment method above</>
           ) : (
-            <>Choose how to pay</>
+            <>Add items to your order first</>
           )}
         </button>
       </div>

@@ -91,11 +91,15 @@ export function getIncludedSide(name: string): string | null {
 
 function isSteak(name: string) {
   const n = name.toLowerCase();
-  return n.includes("steak") || n.includes("ribeye") || n.includes("filet") || n.includes("strip") || n.includes("sirloin") || n.includes("bone-in") || n.includes("tenderloin");
+  const isBeef = n.includes("ribeye") || n.includes("filet") || n.includes("strip") ||
+                 n.includes("sirloin") || n.includes("bone-in") || n.includes("tenderloin");
+  const isPoultryOrFish = n.includes("salmon") || n.includes("tuna") || n.includes("chicken");
+  return isBeef && !isPoultryOrFish;
 }
 
 const DONENESS = ["Medium Rare", "Rare", "Medium", "Well Done"];
 const SAUCES = ["Béarnaise", "Peppercorn", "Chimichurri"];
+const SIDES = ["Mac & Cheese", "Caesar Salad", "Brussels Sprouts", "Truffle Fries"];
 
 /* ─── Menu Browser ──────────────────────────────────────────── */
 interface MenuBrowserProps {
@@ -112,6 +116,7 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
   // Inline expansion state
   const [expandDoneness, setExpandDoneness] = useState<string | undefined>(undefined);
   const [expandSauce, setExpandSauce] = useState<string | undefined>(undefined);
+  const [expandSide, setExpandSide] = useState<string | undefined>(undefined);
   const [expandNotes, setExpandNotes] = useState("");
   const [expandQty, setExpandQty] = useState(1);
   const [scrollToId, setScrollToId] = useState<string | null>(null);
@@ -125,6 +130,13 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
     setScrollToId(null);
   }, [scrollToId]);
 
+  useEffect(() => {
+    const savedId = sessionStorage.getItem("menu_expanded_item");
+    if (!savedId) return;
+    const item = menu.items.find((i) => i.id === savedId);
+    if (item && item.availability !== "sold_out") openItem(item);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const visibleCategories: { id: string | null; name: string; items: typeof menu.items }[] = activeCategoryId
     ? [{ id: activeCategoryId, name: menu.categories.find((c) => c.id === activeCategoryId)?.name ?? "", items: menu.items.filter((i) => i.categoryId === activeCategoryId && i.availability !== "hidden") }]
     : menu.categories.map((cat) => ({ id: cat.id, name: cat.name, items: menu.items.filter((i) => i.categoryId === cat.id && i.availability !== "hidden") })).filter((g) => g.items.length > 0);
@@ -136,18 +148,21 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
 
   function openItem(item: MenuItem) {
     const showD = isSteak(item.name);
+    sessionStorage.setItem("menu_expanded_item", item.id);
     setSelectedItem(item);
     setExpandDoneness(showD ? "Medium Rare" : undefined);
     setExpandSauce(showD ? "Béarnaise" : undefined);
+    setExpandSide(undefined);
     setExpandNotes("");
     setExpandQty(1);
   }
 
   function closeItem() {
+    sessionStorage.removeItem("menu_expanded_item");
     setSelectedItem(null);
   }
 
-  function handleAddItem(item: MenuItem, opts: { doneness?: string; sauce?: string; notes?: string; qty: number }) {
+  function handleAddItem(item: MenuItem, opts: { doneness?: string; sauce?: string; side?: string; notes?: string; qty: number }) {
     addItem({
       id: item.id,
       name: item.name,
@@ -156,6 +171,7 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
       options: {
         doneness: opts.doneness,
         sauce: opts.sauce,
+        side: opts.side,
         notes: opts.notes,
       },
     });
@@ -165,6 +181,7 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
     handleAddItem(item, {
       doneness: expandDoneness,
       sauce: expandSauce,
+      side: expandSide,
       notes: expandNotes.trim() || undefined,
       qty: expandQty,
     });
@@ -330,6 +347,24 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
                         </>
                       ) : null}
 
+                      {getIncludedSide(item.name) !== null ? (
+                        <div>
+                          <p className="option-label">Side Dish</p>
+                          <div className="option-pills">
+                            {SIDES.map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                className={`option-pill${expandSide === s ? " option-pill--active" : ""}`}
+                                onClick={() => setExpandSide(expandSide === s ? undefined : s)}
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div>
                         <p className="option-label">Notes</p>
                         <textarea
@@ -340,14 +375,6 @@ export function MenuBrowser({ menu, publicToken }: MenuBrowserProps) {
                           rows={2}
                         />
                       </div>
-
-                      {allergens.length > 0 ? (
-                        <div className="menu-list-card__chips">
-                          {allergens.map((a) => (
-                            <span key={a.code} className={`menu-chip menu-chip--${a.code}`}>{a.label}</span>
-                          ))}
-                        </div>
-                      ) : null}
 
                       {/* Qty row + Add */}
                       <div className="expand-qty-add-row">
