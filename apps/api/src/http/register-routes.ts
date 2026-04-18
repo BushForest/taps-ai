@@ -9,12 +9,15 @@ declare module "fastify" {
   }
 }
 import type { CloseValidationResult, DiningSession, GetSessionStatusResponse } from "@taps/contracts";
+import { and, desc, eq, inArray, leads, type TapsDbClient } from "@taps/db";
 import { DomainError, NotFoundError } from "../lib/errors";
 import { newId } from "../lib/idempotency";
 import type { AppContainer } from "../bootstrap/create-container";
 import { parseSquareWebhookEvent } from "./webhooks/square";
 import { parseStripeWebhookEvent } from "./webhooks/stripe";
 import { extractBearerToken, verifyJwt, JwtVerificationError } from "./auth";
+import { createGooglePlacesClient } from "../modules/onboarding/google-places-client";
+import { scoreRestaurant } from "../modules/onboarding/lead-scorer";
 
 function buildContext(restaurantId: string, actor: { type: "guest" | "restaurant_admin" | "system"; id: string }) {
   return {
@@ -125,7 +128,13 @@ export async function registerRoutes(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   app: FastifyInstance<any, any, any, any>,
   container: AppContainer,
-  runtime?: { apiBaseUrl?: string; stripeWebhookSecret?: string; squareWebhookSignatureKey?: string; jwtSecret?: string }
+  runtime?: {
+    apiBaseUrl?: string;
+    stripeWebhookSecret?: string;
+    squareWebhookSignatureKey?: string;
+    jwtSecret?: string;
+    db?: TapsDbClient;
+  }
 ): Promise<void> {
   app.get("/health", async () => ({
     ok: true,
@@ -763,6 +772,183 @@ export async function registerRoutes(
         detail
       };
     });
+
+  // ── Lead Finder endpoints (superadmin-only guard added in shell-02) ──────────
+
+  app.post("/admin/leads/search", async (request, reply) => {
+    const body = z.object({
+      query: z.string().min(1),
+      location: z.string().min(1),
+      backend: z.enum(["google", "yelp", "auto"]).default("auto")
+    }).parse(request.body);
+
+    const useGoogle =
+      body.backend === "google" ||
+      (body.backend === "auto" && !!process.env["GOOGLE_PLACES_API_KEY"]);
+
+    if (useGoogle) {
+      const client = createGooglePlacesClient();
+      if (!client) {
+        return reply.code(503).send({ error: "GOOGLE_PLACES_UNAVAILABLE", message: "GOOGLE_PLACES_API_KEY not configured" });
+      }
+      const results = await client.searchRestaurants(`${body.query} ${body.location}`);
+      const scored = results.map((r) =>
+        scoreRestaurant({
+          name: r.name,
+          categories: r.cuisineTypes,
+          rating: r.rating
+        })
+      );
+      return { source: "google", results: scored };
+    }
+
+    // Yelp fallback: return a search URL (no API key needed)
+    const yelpUrl = `https://www.yelp.com/search?find_desc=${encodeURIComponent(body.query)}&find_loc=${encodeURIComponent(body.location)}`;
+    return { source: "yelp_url", results: [], searchUrl: yelpUrl };
+  });
+
+  app.get("/admin/leads", async (request, reply) => {
+    if (!runtime?.db) {
+      return reply.code(503).send({ error: "DB_UNAVAILABLE", message: "Leads require DATA_STORE_DRIVER=postgres" });
+    }
+    const query = z.object({
+      tier: z.string().optional(),
+      status: z.string().optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+      offset: z.coerce.number().int().min(0).default(0)
+    }).parse(request.query);
+
+    const conditions = [];
+    if (query.tier) {
+      const tiers = query.tier.split(",").map((t) => t.trim());
+      conditions.push(inArray(leads.tier, tiers));
+    }
+    if (query.status) {
+      conditions.push(eq(leads.status, query.status));
+    }
+
+    const rows = await runtime.db
+      .select()
+      .from(leads)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(leads.createdAt))
+      .limit(query.limit)
+      .offset(query.offset);
+
+    return rows;
+  });
+
+  app.post("/admin/leads", async (request, reply) => {
+    if (!runtime?.db) {
+      return reply.code(503).send({ error: "DB_UNAVAILABLE", message: "Leads require DATA_STORE_DRIVER=postgres" });
+    }
+    const body = z.object({
+      name: z.string().min(1),
+      city: z.string().min(1),
+      state: z.string().optional(),
+      address: z.string().optional(),
+      phone: z.string().optional(),
+      website: z.string().optional(),
+      googlePlaceId: z.string().optional(),
+      yelpUrl: z.string().optional(),
+      categories: z.array(z.string()).optional(),
+      priceRange: z.number().int().min(1).max(4).optional(),
+      rating: z.number().optional(),
+      reviewCount: z.number().int().optional(),
+      score: z.number().int().min(0).max(100),
+      tier: z.enum(["hot", "good", "possible", "no_fit"]),
+      scoreBreakdown: z.record(z.number()).optional(),
+      fitReasons: z.array(z.string()).optional(),
+      warnings: z.array(z.string()).optional(),
+      posHint: z.string().optional(),
+      status: z.string().default("new"),
+      notes: z.string().optional()
+    }).parse(request.body);
+
+    const id = newId("lead");
+    const now = new Date();
+
+    await runtime.db.insert(leads).values({
+      id,
+      name: body.name,
+      city: body.city,
+      state: body.state ?? null,
+      address: body.address ?? null,
+      phone: body.phone ?? null,
+      website: body.website ?? null,
+      googlePlaceId: body.googlePlaceId ?? null,
+      yelpUrl: body.yelpUrl ?? null,
+      categories: body.categories ?? null,
+      priceRange: body.priceRange ?? null,
+      rating: body.rating != null ? body.rating : null,
+      reviewCount: body.reviewCount ?? null,
+      score: body.score,
+      tier: body.tier,
+      scoreBreakdown: body.scoreBreakdown ?? null,
+      fitReasons: body.fitReasons ?? null,
+      warnings: body.warnings ?? null,
+      posHint: body.posHint ?? null,
+      status: body.status,
+      notes: body.notes ?? null,
+      savedAt: now,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const [saved] = await runtime.db.select().from(leads).where(eq(leads.id, id)).limit(1);
+    return saved;
+  });
+
+  app.patch("/admin/leads/:id", async (request, reply) => {
+    if (!runtime?.db) {
+      return reply.code(503).send({ error: "DB_UNAVAILABLE", message: "Leads require DATA_STORE_DRIVER=postgres" });
+    }
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+    const body = z.object({
+      status: z.string().optional(),
+      notes: z.string().optional()
+    }).parse(request.body);
+
+    const [existing] = await runtime.db
+      .select()
+      .from(leads)
+      .where(eq(leads.id, params.id))
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundError(`Lead ${params.id} not found`);
+    }
+
+    await runtime.db
+      .update(leads)
+      .set({
+        ...(body.status !== undefined ? { status: body.status } : {}),
+        ...(body.notes !== undefined ? { notes: body.notes } : {}),
+        updatedAt: new Date()
+      })
+      .where(eq(leads.id, params.id));
+
+    const [updated] = await runtime.db.select().from(leads).where(eq(leads.id, params.id)).limit(1);
+    return updated;
+  });
+
+  app.delete("/admin/leads/:id", async (request, reply) => {
+    if (!runtime?.db) {
+      return reply.code(503).send({ error: "DB_UNAVAILABLE", message: "Leads require DATA_STORE_DRIVER=postgres" });
+    }
+    const params = z.object({ id: z.string().min(1) }).parse(request.params);
+
+    const [existing] = await runtime.db
+      .select()
+      .from(leads)
+      .where(eq(leads.id, params.id))
+      .limit(1);
+    if (!existing) {
+      throw new NotFoundError(`Lead ${params.id} not found`);
+    }
+
+    await runtime.db.delete(leads).where(eq(leads.id, params.id));
+    return { ok: true };
+  });
 
   app.post("/webhooks/square", { config: { rawBody: true } }, async (request, reply) => {
     const payload: string = Buffer.isBuffer(request.rawBody)
