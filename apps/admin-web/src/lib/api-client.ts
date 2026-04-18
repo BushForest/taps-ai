@@ -7,6 +7,63 @@ import type {
   MenuSnapshot
 } from "@taps/contracts";
 
+// ── Lead Finder types ─────────────────────────────────────────────────────────
+
+export interface ScoredLead {
+  name: string;
+  categories: string[];
+  priceRange?: number;
+  rating?: number;
+  reviewCount?: number;
+  hasOnlineOrdering?: boolean;
+  lat?: number;
+  lon?: number;
+  score: number;
+  tier: "hot" | "good" | "possible" | "no_fit";
+  scoreBreakdown: {
+    categories: number;
+    priceRange: number;
+    rating: number;
+    reviewCount: number;
+  };
+  fitReasons: string[];
+  warnings: string[];
+  posHint?: string;
+}
+
+export interface SearchLeadsResult {
+  source: "google" | "yelp_url";
+  results: ScoredLead[];
+  searchUrl?: string;
+}
+
+export interface Lead {
+  id: string;
+  name: string;
+  city: string;
+  state: string | null;
+  address: string | null;
+  phone: string | null;
+  website: string | null;
+  googlePlaceId: string | null;
+  yelpUrl: string | null;
+  categories: string[] | null;
+  priceRange: number | null;
+  rating: number | null;
+  reviewCount: number | null;
+  score: number;
+  tier: "hot" | "good" | "possible" | "no_fit";
+  scoreBreakdown: Record<string, number> | null;
+  fitReasons: string[] | null;
+  warnings: string[] | null;
+  posHint: string | null;
+  status: string;
+  notes: string | null;
+  savedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
 
@@ -72,6 +129,19 @@ export async function adminDelete(path: string): Promise<void> {
   }
 }
 
+export async function adminPatch<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: adminHeaders({ "content-type": "application/json" }),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export function fetchRestaurantOverview(restaurantId: string) {
   return adminGet<AdminRestaurantOverviewResponse>(`/admin/restaurants/${restaurantId}/overview`);
 }
@@ -132,4 +202,33 @@ export function fetchRestaurantFlags(restaurantId: string) {
 
 export function updateRestaurantFlags(restaurantId: string, flags: Record<string, boolean>) {
   return adminPost<{ ok: true; flags: Record<string, boolean> }>(`/admin/restaurants/${restaurantId}/flags`, { flags });
+}
+
+// ── Lead Finder API ───────────────────────────────────────────────────────────
+
+export function searchLeads(query: string, location: string, backend?: "google" | "yelp" | "auto") {
+  return adminPost<SearchLeadsResult>("/admin/leads/search", { query, location, backend });
+}
+
+export function fetchLeads(params?: { tier?: string; status?: string; limit?: number; offset?: number }) {
+  const search = new URLSearchParams();
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined) search.set(k, String(v));
+    }
+  }
+  const qs = search.size ? `?${search.toString()}` : "";
+  return adminGet<Lead[]>(`/admin/leads${qs}`);
+}
+
+export function saveLead(lead: Omit<Lead, "id" | "savedAt" | "createdAt" | "updatedAt">) {
+  return adminPost<Lead>("/admin/leads", lead);
+}
+
+export function updateLead(id: string, patch: { status?: string; notes?: string }) {
+  return adminPatch<Lead>(`/admin/leads/${id}`, patch);
+}
+
+export function deleteLead(id: string) {
+  return adminDelete(`/admin/leads/${id}`);
 }
