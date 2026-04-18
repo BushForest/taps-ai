@@ -5,6 +5,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -289,4 +290,31 @@ export const outboxEvents = pgTable("outbox_events", {
   availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
   processedAt: timestamp("processed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const leads = pgTable("leads", {
+  id: idColumn("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  city: varchar("city", { length: 255 }).notNull(),
+  state: varchar("state", { length: 255 }),
+  address: text("address"),
+  phone: varchar("phone", { length: 100 }),
+  website: varchar("website", { length: 500 }),
+  googlePlaceId: varchar("google_place_id", { length: 255 }),
+  yelpUrl: varchar("yelp_url", { length: 500 }),
+  categories: jsonb("categories"),
+  priceRange: smallint("price_range"),
+  rating: integer("rating"),
+  reviewCount: integer("review_count"),
+  score: smallint("score").notNull(),
+  tier: varchar("tier", { length: 20 }).notNull(),
+  scoreBreakdown: jsonb("score_breakdown"),
+  fitReasons: jsonb("fit_reasons"),
+  warnings: jsonb("warnings"),
+  posHint: varchar("pos_hint", { length: 100 }),
+  status: varchar("status", { length: 50 }).notNull().default("new"),
+  notes: text("notes"),
+  savedAt: timestamp("saved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
 });

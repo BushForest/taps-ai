@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import fastifyRawBody from "fastify-raw-body";
 import type { AppEnv } from "@taps/config";
 import { createLogger } from "@taps/observability";
+import { createDbClient } from "@taps/db";
 import { createContainer, type ContainerRuntimeOptions } from "./create-container";
 import { attachErrorHandler, registerRoutes } from "../http/register-routes";
 
@@ -58,6 +59,14 @@ export async function createApp(env?: AppEnv, runtimeOverrides?: Partial<Contain
   };
   const container = createContainer(runtimeOptions);
 
+  // Resolve the db client for leads endpoints (bypasses the repository layer).
+  // Only available when DATA_STORE_DRIVER=postgres; memory mode leaves it undefined.
+  const db =
+    runtimeOptions.dbClient ??
+    (runtimeOptions.dataStoreDriver === "postgres" && runtimeOptions.databaseUrl
+      ? createDbClient(runtimeOptions.databaseUrl)
+      : undefined);
+
   attachErrorHandler(app);
   // Register routes inside a plugin so they are registered AFTER fastify-raw-body
   // initializes and installs its onRoute hook. Routes registered before that hook
@@ -67,7 +76,8 @@ export async function createApp(env?: AppEnv, runtimeOverrides?: Partial<Contain
       apiBaseUrl: env?.API_BASE_URL,
       stripeWebhookSecret: runtimeOptions.stripe?.webhookSecret ?? env?.STRIPE_WEBHOOK_SECRET,
       squareWebhookSignatureKey: runtimeOptions.square?.webhookSignatureKey ?? env?.SQUARE_WEBHOOK_SIGNATURE_KEY,
-      jwtSecret: env?.JWT_SECRET
+      jwtSecret: env?.JWT_SECRET,
+      db
     });
   });
 
