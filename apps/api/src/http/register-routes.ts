@@ -9,12 +9,15 @@ declare module "fastify" {
   }
 }
 import type { CloseValidationResult, DiningSession, GetSessionStatusResponse } from "@taps/contracts";
+import { createLogger } from "@taps/observability";
 import { DomainError, NotFoundError } from "../lib/errors";
 import { newId } from "../lib/idempotency";
 import type { AppContainer } from "../bootstrap/create-container";
 import { parseSquareWebhookEvent } from "./webhooks/square";
 import { parseStripeWebhookEvent } from "./webhooks/stripe";
 import { extractBearerToken, verifyJwt, JwtVerificationError } from "./auth";
+
+const log = createLogger({ service: "api" });
 
 function buildContext(restaurantId: string, actor: { type: "guest" | "restaurant_admin" | "system"; id: string }) {
   return {
@@ -861,8 +864,9 @@ export async function registerRoutes(
 }
 
 export function attachErrorHandler(app: FastifyInstance<any, any, any, any>) {
-  app.setErrorHandler((error: Error, _request: FastifyRequest, reply: FastifyReply) => {
+  app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply) => {
     if (error instanceof DomainError) {
+      app.log.warn({ traceId: request.traceId, code: error.code }, error.message);
       void reply.code(error.statusCode).send({
         error: error.code,
         message: error.message
@@ -870,6 +874,17 @@ export function attachErrorHandler(app: FastifyInstance<any, any, any, any>) {
       return;
     }
 
+    log.error(
+      {
+        traceId: request.traceId,
+        path: request.url,
+        method: request.method,
+        statusCode: 500,
+        errorMessage: error.message,
+        stack: error.stack
+      },
+      "unhandled error"
+    );
     void reply.code(500).send({
       error: "INTERNAL_SERVER_ERROR",
       message: error.message

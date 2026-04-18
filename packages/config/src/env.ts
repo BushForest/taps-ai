@@ -18,6 +18,7 @@ const envSchema = z.object({
   SQUARE_LOCATION_ID: z.string().optional(),
   SQUARE_WEBHOOK_SIGNATURE_KEY: z.string().optional(),
   JWT_SECRET: z.string().min(1).optional(),
+  SENTRY_DSN: z.string().optional(),
   API_BASE_URL: z.string().url(),
   PUBLIC_BASE_URL: z.string().url(),
   ADMIN_BASE_URL: z.string().url()

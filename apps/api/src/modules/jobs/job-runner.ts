@@ -1,4 +1,5 @@
 import type { AppContainer } from "../../bootstrap/create-container";
+import { createLogger, createTraceContext, withSentryScope } from "@taps/observability";
 import { runPaymentReconciliationWorker } from "../workers/payment-reconciliation.worker";
 import { runPollReconcilerWorker } from "../workers/poll-reconciler.worker";
 import {
@@ -107,18 +108,33 @@ export async function startBullMqWorkers(container: AppContainer): Promise<{ clo
   });
   const worker = new Worker(
     dispatcher.queueName,
-    async (job) =>
-      processQueuedJob(container, {
-        id: job.id?.toString() ?? "unknown",
-        name: job.name as JobName,
-        payload: (job.data?.payload ?? {}) as Record<string, unknown>,
-        dedupeKey: job.data?.dedupeKey as string | undefined,
-        availableAt: new Date((job.timestamp ?? Date.now()) + (job.delay ?? 0)).toISOString(),
-        status: "running",
-        createdAt: new Date(job.timestamp ?? Date.now()).toISOString(),
-        attempts: (job.attemptsMade ?? 0) + 1,
-        maxAttempts: job.opts.attempts ?? 1
-      }),
+    async (job) => {
+      const { traceId } = createTraceContext();
+      const log = createLogger({ service: "worker", traceId });
+      return withSentryScope(
+        async () => {
+          try {
+            log.info({ action: `job.${job.name}`, jobId: job.id }, "job starting");
+            await processQueuedJob(container, {
+              id: job.id?.toString() ?? "unknown",
+              name: job.name as JobName,
+              payload: (job.data?.payload ?? {}) as Record<string, unknown>,
+              dedupeKey: job.data?.dedupeKey as string | undefined,
+              availableAt: new Date((job.timestamp ?? Date.now()) + (job.delay ?? 0)).toISOString(),
+              status: "running",
+              createdAt: new Date(job.timestamp ?? Date.now()).toISOString(),
+              attempts: (job.attemptsMade ?? 0) + 1,
+              maxAttempts: job.opts.attempts ?? 1
+            });
+            log.info({ action: `job.${job.name}`, jobId: job.id }, "job completed");
+          } catch (err) {
+            log.error({ err, jobId: job.id, jobName: job.name, attempt: job.attemptsMade }, "job failed");
+            throw err; // re-throw for BullMQ retry
+          }
+        },
+        { traceId, action: `job.${job.name}` }
+      );
+    },
     {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       connection: connection as any,

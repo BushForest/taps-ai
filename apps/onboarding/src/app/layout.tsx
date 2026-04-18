@@ -1,18 +1,11 @@
 import type { ReactNode } from "react";
-import { Inter } from "next/font/google";
+import type { Metadata } from "next";
 import { ErrorBoundary } from "@sentry/nextjs";
 import { TraceProvider } from "@taps/observability";
-import "./global.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  weight: ["400", "500", "600", "700", "800", "900"]
-});
-
-export const metadata = {
-  title: "TAPs Ops — Admin",
-  description: "TAPs Eats restaurant operations dashboard"
+export const metadata: Metadata = {
+  title: "TAPs Eats — Restaurant Onboarding",
+  description: "Set up your restaurant on the TAPs Eats platform.",
 };
 
 function RootErrorFallback() {
@@ -26,7 +19,7 @@ function RootErrorFallback() {
 
 export default function RootLayout(props: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <body>
         <TraceProvider>
           <ErrorBoundary fallback={<RootErrorFallback />}>

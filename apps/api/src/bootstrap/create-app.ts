@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import fastifyRawBody from "fastify-raw-body";
 import type { AppEnv } from "@taps/config";
-import { createLogger } from "@taps/observability";
+import { createLogger, createTraceContext, setSentryTag } from "@taps/observability";
 import { createContainer, type ContainerRuntimeOptions } from "./create-container";
 import { attachErrorHandler, registerRoutes } from "../http/register-routes";
 
@@ -20,6 +20,25 @@ export async function createApp(env?: AppEnv, runtimeOverrides?: Partial<Contain
   // in tests and certain environments). The built-in application/json parser
   // still takes precedence for JSON requests.
   app.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => done(null, body));
+
+  const TRACE_ID_RE = /^[0-9a-f-]{36}$/i;
+  app.addHook("onRequest", async (request) => {
+    const raw = request.headers["x-trace-id"];
+    const inbound = (Array.isArray(raw) ? raw[0] : raw) ?? "";
+    // Validate inbound trace id; generate a fresh one if invalid or absent
+    const traceId =
+      inbound && TRACE_ID_RE.test(inbound) ? inbound : crypto.randomUUID();
+    setSentryTag("trace_id", traceId);
+    request.log = request.log.child({ traceId });
+    request.traceId = traceId;
+  });
+
+  app.addHook("onSend", async (request, reply) => {
+    if (request.traceId) {
+      reply.header("x-trace-id", request.traceId);
+    }
+  });
+
   const envOptions: Partial<ContainerRuntimeOptions> = {
     ...(env
       ? {

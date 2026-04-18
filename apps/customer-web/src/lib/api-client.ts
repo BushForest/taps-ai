@@ -36,16 +36,24 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
+function traceHeaders(traceId?: string): Record<string, string> {
+  return traceId ? { "x-trace-id": traceId } : {};
+}
+
+export async function apiGet<T>(path: string, traceId?: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    cache: "no-store",
+    headers: traceHeaders(traceId),
+  });
   return parseResponse<T>(response);
 }
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T>(path: string, body: unknown, traceId?: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...traceHeaders(traceId),
     },
     body: JSON.stringify(body),
     cache: "no-store"
@@ -57,50 +65,60 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
-export function resolveTap(tagCode: string): Promise<SessionSummaryResponse> {
-  return apiPost<SessionSummaryResponse>(`/public/taps/${tagCode}/session`, {});
+export function resolveTap(tagCode: string, traceId?: string): Promise<SessionSummaryResponse> {
+  return apiPost<SessionSummaryResponse>(`/public/taps/${tagCode}/session`, {}, traceId);
 }
 
-export function fetchGuestSummary(publicToken: string): Promise<GetSessionStatusResponse> {
-  return apiGet<GetSessionStatusResponse>(`/public/sessions/${publicToken}/summary`);
+export function fetchGuestSummary(publicToken: string, traceId?: string): Promise<GetSessionStatusResponse> {
+  return apiGet<GetSessionStatusResponse>(`/public/sessions/${publicToken}/summary`, traceId);
 }
 
-export function fetchGuestStatus(publicToken: string): Promise<GetSessionStatusResponse> {
-  return apiGet<GetSessionStatusResponse>(`/public/sessions/${publicToken}/status`);
+export function fetchGuestStatus(publicToken: string, traceId?: string): Promise<GetSessionStatusResponse> {
+  return apiGet<GetSessionStatusResponse>(`/public/sessions/${publicToken}/status`, traceId);
 }
 
-export function fetchMenu(publicToken: string): Promise<MenuSnapshot> {
-  return apiGet<MenuSnapshot>(`/public/sessions/${publicToken}/menu`);
+export function fetchMenu(publicToken: string, traceId?: string): Promise<MenuSnapshot> {
+  return apiGet<MenuSnapshot>(`/public/sessions/${publicToken}/menu`, traceId);
 }
 
-export function fetchPublicRestaurantMenu(restaurantId: string): Promise<MenuSnapshot> {
-  return apiGet<MenuSnapshot>(`/public/restaurants/${restaurantId}/menu`);
+export function fetchPublicRestaurantMenu(restaurantId: string, traceId?: string): Promise<MenuSnapshot> {
+  return apiGet<MenuSnapshot>(`/public/restaurants/${restaurantId}/menu`, traceId);
 }
 
-export function fetchCheck(publicToken: string): Promise<GetCheckResponse> {
-  return apiGet<GetCheckResponse>(`/public/sessions/${publicToken}/check`);
+export function fetchCheck(publicToken: string, traceId?: string): Promise<GetCheckResponse> {
+  return apiGet<GetCheckResponse>(`/public/sessions/${publicToken}/check`, traceId);
 }
 
-export function createPayer(publicToken: string, payload: { displayName: string; phoneE164?: string }): Promise<Payer> {
-  return apiPost<Payer>(`/public/sessions/${publicToken}/payers`, payload);
+export function createPayer(
+  publicToken: string,
+  payload: { displayName: string; phoneE164?: string },
+  traceId?: string
+): Promise<Payer> {
+  return apiPost<Payer>(`/public/sessions/${publicToken}/payers`, payload, traceId);
 }
 
-export function splitEvenly(publicToken: string, payload: { checkVersion: number }): Promise<SubmitAllocationResponse> {
-  return apiPost<SubmitAllocationResponse>(`/public/sessions/${publicToken}/allocations/even`, payload);
+export function splitEvenly(
+  publicToken: string,
+  payload: { checkVersion: number },
+  traceId?: string
+): Promise<SubmitAllocationResponse> {
+  return apiPost<SubmitAllocationResponse>(`/public/sessions/${publicToken}/allocations/even`, payload, traceId);
 }
 
 export function splitByItem(
   publicToken: string,
-  payload: { payerId: string; checkVersion: number; lineItemIds: string[] }
+  payload: { payerId: string; checkVersion: number; lineItemIds: string[] },
+  traceId?: string
 ): Promise<SubmitAllocationResponse> {
-  return apiPost<SubmitAllocationResponse>(`/public/sessions/${publicToken}/allocations/by-item`, payload);
+  return apiPost<SubmitAllocationResponse>(`/public/sessions/${publicToken}/allocations/by-item`, payload, traceId);
 }
 
 export function splitCustomAmount(
   publicToken: string,
-  payload: { payerId: string; checkVersion: number; amountCents: number }
+  payload: { payerId: string; checkVersion: number; amountCents: number },
+  traceId?: string
 ): Promise<SubmitAllocationResponse> {
-  return apiPost<SubmitAllocationResponse>(`/public/sessions/${publicToken}/allocations/custom`, payload);
+  return apiPost<SubmitAllocationResponse>(`/public/sessions/${publicToken}/allocations/custom`, payload, traceId);
 }
 
 export function createPaymentIntent(
@@ -111,23 +129,25 @@ export function createPaymentIntent(
     checkVersion: number;
     amountCents: number;
     tipCents: number;
-  }
+  },
+  traceId?: string
 ): Promise<CreatePaymentIntentResponse> {
-  return apiPost<CreatePaymentIntentResponse>(`/public/sessions/${publicToken}/payments/intents`, payload);
+  return apiPost<CreatePaymentIntentResponse>(`/public/sessions/${publicToken}/payments/intents`, payload, traceId);
 }
 
-export function capturePayment(publicToken: string, paymentAttemptId: string) {
+export function capturePayment(publicToken: string, paymentAttemptId: string, traceId?: string) {
   return apiPost<{
     paymentAttempt: { id: string; status: string };
     session: { status: string };
     closeValidation?: { canClose: boolean; reasons: string[] };
     check: { remainingBalanceCents: number };
-  }>(`/public/sessions/${publicToken}/payments/${paymentAttemptId}/capture`, {});
+  }>(`/public/sessions/${publicToken}/payments/${paymentAttemptId}/capture`, {}, traceId);
 }
 
 export function attachLoyalty(
   publicToken: string,
-  payload: { payerId?: string; phoneNumber: string }
+  payload: { payerId?: string; phoneNumber: string },
+  traceId?: string
 ): Promise<AttachLoyaltyResponse> {
-  return apiPost<AttachLoyaltyResponse>(`/public/sessions/${publicToken}/loyalty`, payload);
+  return apiPost<AttachLoyaltyResponse>(`/public/sessions/${publicToken}/loyalty`, payload, traceId);
 }

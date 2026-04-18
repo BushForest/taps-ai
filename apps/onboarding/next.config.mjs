@@ -3,20 +3,11 @@ import { withSentryConfig } from "@sentry/nextjs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typedRoutes: true,
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com",
-        pathname: "/photo-**"
-      }
-    ]
-  }
 };
 
 export default withSentryConfig(nextConfig, {
   org: "tapseats",
-  project: "taps-customer-web",
+  project: "taps-onboarding",
   hideSourceMaps: true,
   tunnelRoute: "/monitoring",
   silent: true,

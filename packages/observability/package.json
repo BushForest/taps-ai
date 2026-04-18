@@ -12,6 +12,18 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@sentry/node": "^8",
     "pino": "^9.6.0"
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19"
   }
 }
