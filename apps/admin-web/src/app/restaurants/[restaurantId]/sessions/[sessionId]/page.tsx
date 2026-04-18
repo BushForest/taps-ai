@@ -1,8 +1,10 @@
 import type { Route } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { AdminShell } from "../../../../../components/admin-shell";
 import { fetchSessionDetail } from "../../../../../lib/api-client";
 import { formatCurrency } from "../../../../../lib/format";
+import { getRoleFromCookie } from "../../../../../lib/auth";
 
 function formatTimeActive(openedAt: string): string {
   const diff = Math.floor((Date.now() - new Date(openedAt).getTime()) / 60000);
@@ -31,6 +33,7 @@ export default async function SessionDetailPage(props: {
   params: Promise<{ restaurantId: string; sessionId: string }>;
 }) {
   const { restaurantId, sessionId } = await props.params;
+  const role = getRoleFromCookie(await cookies());
   const detail = await fetchSessionDetail(restaurantId, sessionId);
 
   const tableNum = detail.session.tableId.replace(/^table_?/i, "").replace(/_/g, " ").trim().toUpperCase();
@@ -46,7 +49,7 @@ export default async function SessionDetailPage(props: {
   const lines = detail.check?.lines?.filter((l) => !l.parentLineId) ?? [];
 
   return (
-    <AdminShell restaurantId={restaurantId} activeTab="floor">
+    <AdminShell restaurantId={restaurantId} activeTab="floor" role={role ?? undefined}>
       {/* Nav */}
       <div className="table-detail-nav">
         <Link href={`/restaurants/${restaurantId}/sessions` as Route} className="table-detail-back">←</Link>

@@ -17,6 +17,7 @@ export function AdminShell(props: {
   activeTab?: AdminTab;
   title?: string;
   subtitle?: string;
+  role?: string;
 }) {
   const rid = props.restaurantId ?? "rest_demo";
 
@@ -39,6 +40,15 @@ export function AdminShell(props: {
             <span className="admin-sidebar-link__label">{tab.label}</span>
           </Link>
         ))}
+        {props.role === "superadmin" && (
+          <Link
+            href="/leads"
+            className="admin-sidebar-link"
+          >
+            <span className="admin-sidebar-link__icon">◈</span>
+            <span className="admin-sidebar-link__label">Find Leads</span>
+          </Link>
+        )}
       </nav>
 
       <main className="admin-main">
@@ -57,6 +67,15 @@ export function AdminShell(props: {
             <span className="admin-bottom-tab__label">{tab.label}</span>
           </Link>
         ))}
+        {props.role === "superadmin" && (
+          <Link
+            href="/leads"
+            className="admin-bottom-tab"
+          >
+            <span className="admin-bottom-tab__icon">◈</span>
+            <span className="admin-bottom-tab__label">Find Leads</span>
+          </Link>
+        )}
       </nav>
     </div>
   );

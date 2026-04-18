@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { cookies } from "next/headers";
 import { AdminShell } from "../../../../../components/admin-shell";
+import { getRoleFromCookie } from "../../../../../lib/auth";
 
 const PAIRINGS = [
   { a: "Ribeye Steak", b: "Red Wine",       count: "38×", revenue: "$1,224" },
@@ -20,9 +22,10 @@ export default async function ItemPairingsPage(props: {
   params: Promise<{ restaurantId: string }>;
 }) {
   const { restaurantId } = await props.params;
+  const role = getRoleFromCookie(await cookies());
 
   return (
-    <AdminShell restaurantId={restaurantId} activeTab="analytics">
+    <AdminShell restaurantId={restaurantId} activeTab="analytics" role={role ?? undefined}>
       <Link href={`/restaurants/${restaurantId}/analytics` as Route} className="admin-back-btn-inline">← Analytics</Link>
       <div style={{ margin: "0 -16px" }}>
         <div className="analytics-sub-header">

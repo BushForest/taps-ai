@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { cookies } from "next/headers";
 import { AdminShell } from "../../../../../components/admin-shell";
+import { getRoleFromCookie } from "../../../../../lib/auth";
 
 const ISSUES = [
   { table: "Table 4", type: "Food Quality",      severity: "high",   amount: "-$68",  date: "Mar 23" },
@@ -21,9 +23,10 @@ export default async function IssuesPage(props: {
   params: Promise<{ restaurantId: string }>;
 }) {
   const { restaurantId } = await props.params;
+  const role = getRoleFromCookie(await cookies());
 
   return (
-    <AdminShell restaurantId={restaurantId} activeTab="analytics">
+    <AdminShell restaurantId={restaurantId} activeTab="analytics" role={role ?? undefined}>
       <Link href={`/restaurants/${restaurantId}/analytics` as Route} className="admin-back-btn-inline">← Analytics</Link>
       <div style={{ margin: "0 -16px" }}>
         <div className="analytics-sub-header">

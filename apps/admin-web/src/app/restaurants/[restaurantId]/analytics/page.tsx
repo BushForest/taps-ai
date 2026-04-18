@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { AdminShell } from "../../../../components/admin-shell";
+import { getRoleFromCookie } from "../../../../lib/auth";
 
 const WEEKLY_REVENUE = [480, 620, 390, 710, 840, 920, 1150];
 const TODAY_IDX = 6;
@@ -23,10 +25,11 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function AnalyticsPage(props: { params: Promise<{ restaurantId: string }> }) {
   const { restaurantId } = await props.params;
+  const role = getRoleFromCookie(await cookies());
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   return (
-    <AdminShell restaurantId={restaurantId} activeTab="analytics">
+    <AdminShell restaurantId={restaurantId} activeTab="analytics" role={role ?? undefined}>
       <div className="analytics-header">
         <div className="analytics-title">Analytics</div>
         <div className="analytics-date">{today}</div>

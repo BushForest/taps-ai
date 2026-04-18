@@ -1,12 +1,15 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { AdminShell } from "../../../../components/admin-shell";
 import { OpsCard } from "../../../../components/ops-card";
 import { StatusPill } from "../../../../components/status-pill";
 import { fetchRestaurantTables } from "../../../../lib/api-client";
 import { formatCurrency } from "../../../../lib/format";
+import { getRoleFromCookie } from "../../../../lib/auth";
 
 export default async function TablesPage(props: { params: Promise<{ restaurantId: string }> }) {
   const { restaurantId } = await props.params;
+  const role = getRoleFromCookie(await cookies());
   const response = await fetchRestaurantTables(restaurantId);
 
   return (
@@ -14,6 +17,7 @@ export default async function TablesPage(props: { params: Promise<{ restaurantId
       restaurantId={restaurantId}
       title="All Tables"
       subtitle={`Room view for ${restaurantId}. Use this to see every table before drilling into a single live session.`}
+      role={role ?? undefined}
     >
       <OpsCard title="Tables in the room">
         <div className="admin-table-grid">
